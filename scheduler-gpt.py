@@ -1,3 +1,11 @@
+"""
+Group Members:
+Luke Dederich
+David Castillo
+Ilarya Franco
+Samantha Quan
+"""
+
 import sys
 import os
 from collections import deque
