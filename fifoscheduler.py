@@ -1,6 +1,10 @@
-import sys
+#ChatGPT used for implementation: https://chatgpt.com/share/68d8b0f2-e110-8000-b7dd-7b76757223c5
+#To run this code, call run_fifo_scheduler_from_file with the filename as the argument
 
-class FIFOProcess:
+import sys
+import os
+
+class Process:
     def __init__(self, name, arrival, burst):
         self.name = name
         self.arrival = arrival
@@ -11,112 +15,105 @@ class FIFOProcess:
         self.finish_time = None
 
     def __repr__(self):
-        return f"{self.name}(arr={self.arrival}, burst={self.burst}, rem={self.remaining})"
-    ''' def __repr__(self):
-        return f"{self.name}(AT={self.arrival}, BT={self.burst})" '''
+        return f"{self.name}(AT={self.arrival}, BT={self.burst})"
 
-def parse_input():
+
+def parse_file(filename):
     """
-    Parses input of the format:
+    Parses input from a file in the format:
         processcount 3
         runfor 20
         use fifo
         process name A arrival 0 burst 5
-        process name B arrival 1 burst 4
-        process name C arrival 4 burst 2
+        ...
         end
     """
+
+    # --- Basic file checks ---
+    if not os.path.exists(filename):
+        print(f"Error: File '{filename}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.isfile(filename):
+        print(f"Error: '{filename}' is not a file.", file=sys.stderr)
+        sys.exit(1)
 
     process_count = 0
     runfor = 0
     algorithm = ""
     processes = []
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
+    try:
+        with open(filename, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
 
-        parts = line.split()
+                parts = line.split()
 
-        if parts[0] == "processcount":
-            process_count = int(parts[1])
+                if parts[0] == "processcount":
+                    process_count = int(parts[1])
 
-        elif parts[0] == "runfor":
-            runfor = int(parts[1])
+                elif parts[0] == "runfor":
+                    runfor = int(parts[1])
 
-        elif parts[0] == "use":
-            algorithm = parts[1].lower()
+                elif parts[0] == "use":
+                    algorithm = parts[1].lower()
 
-        elif parts[0] == "process":
-            # process name A arrival 0 burst 5
-            name = parts[2]
-            arrival = int(parts[4])
-            burst = int(parts[6])
-            processes.append(FIFOProcess(name, arrival, burst))
+                elif parts[0] == "process":
+                    # process name A arrival 0 burst 5
+                    if len(parts) != 7:
+                        print(f"Error: Invalid process line -> '{line}'", file=sys.stderr)
+                        sys.exit(1)
 
-        elif parts[0] == "end":
-            break
+                    name = parts[2]
+                    arrival = int(parts[4])
+                    burst = int(parts[6])
+                    processes.append(Process(name, arrival, burst))
+
+                elif parts[0] == "end":
+                    break
+    except Exception as e:
+        print(f"Error while reading file '{filename}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if process_count != len(processes):
+        print(
+            f"Warning: Declared processcount={process_count}, but parsed {len(processes)} processes.",
+            file=sys.stderr,
+        )
 
     return process_count, runfor, algorithm, processes
 
 
-'''def fifo_scheduler(processes, runfor):
-    # Sort by arrival order (FIFO)
-    processes.sort(key=lambda p: p.arrival)
-
-    time = 0
-    timeline = []
-
-    for p in processes:
-        # If CPU is idle before the process arrives, advance time
-        if time < p.arrival:
-            time = p.arrival
-
-        p.start_time = time
-        time += p.runtime
-        p.finish_time = time
-
-        timeline.append((p.name, p.start_time, p.finish_time))
-
-    return timeline '''
-
 def fifo_scheduler(processes, runfor):
-    # Sort by arrival time
     processes.sort(key=lambda p: p.arrival)
-
     time = 0
     timeline = []
     unfinished = []
 
     for p in processes:
-        # If CPU is idle before process arrives
         if time < p.arrival:
             time = p.arrival
 
-        # Process starts now
         if p.start_time is None:
             p.start_time = time
 
-        # If the whole burst fits before runfor
         if time + p.burst <= runfor:
             time += p.burst
             p.finish_time = time
             timeline.append((p.name, p.start_time, p.finish_time))
         else:
-            # Process is cut off
             executed_time = runfor - time
             if executed_time > 0:
-                # It partially runs before time runs out
                 p.remaining = p.burst - executed_time
                 timeline.append((p.name, p.start_time, runfor))
             else:
-                # It never got to run
                 p.remaining = p.burst
             unfinished.append(p.name)
-            break  # We stop scheduling because runtime is over
+            break
 
-    # If there are processes that arrive after runfor
     for p in processes:
         if p.finish_time is None and p.name not in unfinished:
             unfinished.append(p.name)
@@ -124,12 +121,10 @@ def fifo_scheduler(processes, runfor):
     return timeline, unfinished
 
 
-
 def calculate_metrics(processes):
     results = {}
     for p in processes:
         if p.finish_time is None:
-            # Process did not finish, metrics are undefined
             continue
 
         turnaround = p.finish_time - p.arrival
@@ -143,52 +138,15 @@ def calculate_metrics(processes):
         }
     return results
 
-''' def calculate_metrics(processes):
-    results = {}
-    for p in processes:
-        turnaround = p.finish_time - p.arrival
-        waiting = turnaround - p.runtime
-        response = p.start_time - p.arrival
 
-        results[p.name] = {
-            "Turnaround": turnaround,
-            "Waiting": waiting,
-            "Response": response,
-        }
-    return results '''
-
-
-def run_fifo_scheduler_from_file(input_file):
-    if not input_file.endswith(".in"):
-        print("Error: Input file must have .in extension")
-        return
-
-    output_file = os.path.splitext(input_file)[0] + ".out"
-
-    process_count, runfor, algorithm, processes = parse_input_file(input_file)
-    if processes is None:
-        return
+def run_fifo_scheduler_from_file(filename):
+    
+    process_count, runfor, algorithm, processes = parse_file(filename)
 
     if algorithm != "fifo":
-        print(f"Currently only FIFO is implemented (input used {algorithm})")
-        return
+        print(f"Warning: Input requested '{algorithm}', running FIFO only.", file=sys.stderr)
 
     timeline, unfinished = fifo_scheduler(processes, runfor)
     metrics = calculate_metrics(processes)
 
-    # Write results to output file
-    with open(output_file, "w") as f:
-        f.write("=== Timeline ===\n")
-        for entry in timeline:
-            f.write(f"{entry[0]}: {entry[1]} → {entry[2]}\n")
-
-        f.write("\n=== Metrics ===\n")
-        for name, vals in metrics.items():
-            f.write(f"{name}: TAT={vals['Turnaround']}, WT={vals['Waiting']}, RT={vals['Response']}\n")
-
-        if unfinished:
-            f.write("\n=== Unfinished Processes ===\n")
-            for name in unfinished:
-                f.write(f"{name} did not finish\n")
-
-    print(f"FIFO scheduling results written to {output_file}")
+    return timeline, metrics, unfinished
